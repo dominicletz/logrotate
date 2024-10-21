@@ -7,7 +7,8 @@ defmodule LogRotator do
   Edit the following configuration variables to your liking:
   """
 
-  @max_size 10 * 1024 * 1024
+  @max_size 100 * 1024 * 1024
+  @max_files 10
   @log_file "stdout.log"
   @compress_cmds [
     {"zstd", ["--rm"]},
@@ -37,12 +38,8 @@ defmodule LogRotator do
   end
 
   defp rotate_if_needed(state) do
-    case File.stat(@log_file) do
-      {:ok, %{size: size}} when size > @max_size ->
-        rotate_log(state)
-
-      _ ->
-        :ok
+    with {:ok, %{size: size}} when size > @max_size <- File.stat(@log_file) do
+      rotate_log(state)
     end
   end
 
@@ -53,7 +50,16 @@ defmodule LogRotator do
     spawn(fn ->
       {cmd, args} = state.cmd
       System.cmd(cmd, args ++ [compressed_name])
+      delete_old_logs(state)
     end)
+  end
+
+  defp delete_old_logs(_state) do
+    File.ls!()
+      |> Enum.sort(:desc)
+      |> Enum.filter(&String.starts_with?(&1, @log_file <> "."))
+      |> Enum.drop(@max_files)
+      |> Enum.each(&File.rm/1)
   end
 end
 
