@@ -1,0 +1,60 @@
+#!/usr/bin/env elixir
+
+defmodule LogRotator do
+  @moduledoc """
+  Simple log rotation script that rotates and compresses the log file and deletes the original.
+
+  Edit the following configuration variables to your liking:
+  """
+
+  @max_size 10 * 1024 * 1024
+  @log_file "stdout.log"
+  @compress_cmds [
+    {"zstd", ["--rm"]},
+    {"xz", []},
+    {"gzip", []}
+  ]
+
+  defstruct [cmd: nil]
+
+  def run() do
+    cmd = Enum.find(@compress_cmds, fn {cmd, _} -> System.find_executable(cmd) end)
+    loop(%LogRotator{cmd: cmd})
+  end
+
+  def loop(state) do
+    case IO.read(:line) do
+      {:error, error} -> raise error
+      :eof -> :ok
+      line -> write_to_log(state, line)
+    end
+  end
+
+  defp write_to_log(state, line) do
+    File.write!(@log_file, line, [:append])
+    rotate_if_needed(state)
+    loop(state)
+  end
+
+  defp rotate_if_needed(state) do
+    case File.stat(@log_file) do
+      {:ok, %{size: size}} when size > @max_size ->
+        rotate_log(state)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp rotate_log(state) do
+    compressed_name = "#{@log_file}.#{:os.system_time(:seconds)}"
+    File.rename(@log_file, compressed_name)
+
+    spawn(fn ->
+      {cmd, args} = state.cmd
+      System.cmd(cmd, args ++ [compressed_name])
+    end)
+  end
+end
+
+LogRotator.run()
