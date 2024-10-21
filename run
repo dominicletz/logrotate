@@ -18,7 +18,7 @@ defmodule LogRotator do
   defstruct [cmd: nil]
 
   def run() do
-    cmd = Enum.find(@compress_cmds, fn {cmd, _} -> System.find_executable(cmd) end)
+    cmd = Enum.find(@compress_cmds, fn {cmd, _} -> System.find_executable(cmd) end) || raise "No compression tool found"
     loop(%LogRotator{cmd: cmd})
   end
 
